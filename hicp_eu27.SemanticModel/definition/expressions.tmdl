@@ -1,0 +1,125 @@
+expression pStartMonth = "2015-09" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: d9b244fb-fa91-4e57-9c54-41d895876906
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Text
+
+expression pEndMonth = "2025-08" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 505a6105-1f8e-43b1-82d2-dd07cf246776
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Text
+
+expression fnListChunks =
+		// Split a list into chunks of N (no Number.Min needed)
+		(list as list, chunkSize as number) as list =>
+		let
+		    count      = List.Count(list),
+		    // number of chunks, rounded up
+		    numChunks  = if count = 0 then 0 else Number.RoundUp(count / chunkSize),
+		    indices    = {0 .. numChunks - 1},
+		    chunks     = List.Transform(
+		                    indices,
+		                    (i) =>
+		                        let
+		                            start = i * chunkSize,
+		                            // remaining items for the last chunk
+		                            len   = if start + chunkSize <= count
+		                                    then chunkSize
+		                                    else count - start
+		                        in
+		                            List.Range(list, start, len)
+		                 )
+		in
+		    chunks
+	lineageTag: 8a671d06-3035-4a1f-9dbb-f79a3513ffcf
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Function
+
+expression fnStats6 =
+		// Eurostat Statistics API (JSON-stat 2.0) → flat table
+		// Signature: (dataset, pUnit, coicops, geos, startMonth, endMonth)
+		(dataset as text, pUnit as text, coicops as list, geos as list, startMonth as text, endMonth as text) as table =>
+		let
+		    Base   = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/",
+		    Parts  = List.Combine({
+		                {"lang=EN","freq=M","unit=" & pUnit,"sinceTimePeriod=" & startMonth,"untilTimePeriod=" & endMonth},
+		                List.Transform(coicops, each "coicop=" & _),
+		                List.Transform(geos,    each "geo=" & _)
+		            }),
+		    Url    = Base & dataset & "?" & Text.Combine(Parts, "&"),
+		
+		    Raw    = Web.Contents(Url, [Timeout=#duration(0,0,90,0), Headers=[Accept="application/json"]]),
+		    J      = Json.Document(Raw),
+		    Dset   = if Record.HasFields(J, "dataset") then J[dataset] else J,
+		
+		    Ids0   = List.Transform(Dset[id], each Text.Lower(Text.From(_))),
+		    DimRec0= Dset[dimension],
+		    DimRec = Record.FromList(Record.FieldValues(DimRec0), List.Transform(Record.FieldNames(DimRec0), Text.Lower)),
+		
+		    GetCodes = (d as record) as list =>
+		        let cat = d[category],
+		            idx = if Record.HasFields(cat,"index") then cat[index] else null,
+		            codes =
+		                if idx <> null then
+		                    if Value.Is(idx, type list) then List.Transform(idx, each Text.From(_))
+		                    else if Value.Is(idx, type record) then
+		                        let t = Table.Sort(Record.ToTable(idx), {{"Value", Order.Ascending}})
+		                        in  List.Transform(t[Name], each Text.From(_))
+		                    else Record.FieldNames(cat[label])
+		                else if Record.HasFields(cat,"label") then Record.FieldNames(cat[label]) else {}
+		        in  codes,
+		
+		    CodeLists = List.Transform(Ids0, each GetCodes(Record.Field(DimRec, _))),
+		    Sizes     = List.Transform(CodeLists, each List.Count(_)),
+		    M         = List.Count(Sizes),
+		    N         = if M=0 then 0 else List.Product(Sizes),
+		
+		    ValuesRaw  = Dset[value],
+		    ValuesList =
+		        if Value.Is(ValuesRaw, type list) then ValuesRaw
+		        else if Value.Is(ValuesRaw, type record) then
+		            let names = Record.FieldNames(ValuesRaw),
+		                vals  = Record.FieldValues(ValuesRaw),
+		                pos   = List.Transform(names, each Number.FromText(_)),
+		                base  = List.Repeat({null}, N),
+		                z     = List.Zip({pos, vals}),
+		                filled= List.Accumulate(z, base, (st, p) => List.ReplaceRange(st, {p{0},1},{p{1}}))
+		            in  filled
+		        else List.Repeat({null}, N),
+		
+		    ResultTable =
+		        if N = 0 then #table(Ids0 & {"value"}, {})
+		        else
+		        let
+		            idxs    = {0..N-1},
+		            radices = List.Transform({0..M-1}, (k) => if k = M-1 then 1 else List.Product(List.Range(Sizes, k+1, M-(k+1)))),
+		            DimCol  = (k as number) =>
+		                        let sizeK = Sizes{k}, radK = radices{k}, codesK = CodeLists{k}
+		                        in  List.Transform(idxs, (i) => codesK{ Number.Mod(Number.IntegerDivide(i, radK), sizeK) }),
+		            DimCols = List.Transform({0..M-1}, each DimCol(_)),
+		            AllCols = DimCols & {ValuesList},
+		            ColNames= Ids0 & {"value"}
+		        in  Table.FromColumns(AllCols, ColNames),
+		
+		    LowerCols = Table.TransformColumnNames(ResultTable, Text.Lower),
+		    NormTime  = if List.Contains(Table.ColumnNames(LowerCols), "time_period")
+		                then Table.RenameColumns(LowerCols, {{"time_period","time"}}) else LowerCols,
+		    WithUnit  = if List.Contains(Table.ColumnNames(NormTime), "unit")
+		                then NormTime else Table.AddColumn(NormTime, "unit", each pUnit, type text),
+		
+		    Need      = {"time","geo","coicop","unit","value"},
+		    Kept      = Table.SelectColumns(WithUnit, List.Intersect({Need, Table.ColumnNames(WithUnit)}), MissingField.Ignore),
+		    Typed     = Table.TransformColumnTypes(Kept, {{"value", type number}}, "en-US")
+		in
+		    Typed
+	lineageTag: dd4f452d-e954-4abf-a71a-58d125dc1633
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Function
+

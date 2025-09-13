@@ -1,0 +1,154 @@
+table FactHICP_Index
+	lineageTag: 345a9853-f27c-48c6-bcdc-46dd8f7ffa22
+
+	column time
+		dataType: string
+		lineageTag: 692fc587-c2ff-4aee-93f3-c336dd8b518a
+		summarizeBy: none
+		sourceColumn: time
+
+		annotation SummarizationSetBy = Automatic
+
+	column geo
+		dataType: string
+		lineageTag: c48c847d-a555-4da7-adb9-e98d9116add6
+		summarizeBy: none
+		sourceColumn: geo
+
+		annotation SummarizationSetBy = Automatic
+
+	column coicop
+		dataType: string
+		lineageTag: 73210a23-180b-402b-a402-352903d33e9c
+		summarizeBy: none
+		sourceColumn: coicop
+
+		annotation SummarizationSetBy = Automatic
+
+	column unit
+		dataType: string
+		lineageTag: e380af9d-b910-4bce-af4a-f9f5bc690505
+		summarizeBy: none
+		sourceColumn: unit
+
+		annotation SummarizationSetBy = Automatic
+
+	column value
+		dataType: double
+		lineageTag: 9d770157-e9f2-4260-8223-f7ba032246ce
+		summarizeBy: sum
+		sourceColumn: value
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column Date
+		dataType: dateTime
+		formatString: Long Date
+		lineageTag: 26fb34f5-dde7-406d-8f75-56bcb4795e3f
+		summarizeBy: none
+		sourceColumn: Date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	partition FactHICP_Index = m
+		mode: import
+		source =
+				let
+				    // --- Parameters ---
+				    dataset     = "prc_hicp_midx",
+				    unitCode    = "I15",
+				    startMonth  = pStartMonth,
+				    endMonth    = pEndMonth,
+				    geosList    = pGeos,
+				    coicopsList = pCoicops,
+				
+				    // --- Eurostat Statistics API URL ---
+				    Base   = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/",
+				    Parts  = List.Combine({
+				                {"lang=EN","freq=M","unit=" & unitCode,
+				                 "sinceTimePeriod=" & startMonth,"untilTimePeriod=" & endMonth},
+				                List.Transform(coicopsList, each "coicop=" & _),
+				                List.Transform(geosList,    each "geo=" & _)
+				            }),
+				    Url    = Base & dataset & "?" & Text.Combine(Parts, "&"),
+				
+				    // --- Fetch + parse JSON-stat 2.0 ---
+				    Raw = Web.Contents(Url, [Timeout=#duration(0,0,90,0), Headers=[Accept="application/json"]]),
+				    J   = Json.Document(Raw),
+				    D   = if Record.HasFields(J, "dataset") then J[dataset] else J,
+				
+				    // --- Dimensions (lower-cased) ---
+				    Ids  = List.Transform(D[id], each Text.Lower(Text.From(_))),
+				    DimR = Record.FromList(Record.FieldValues(D[dimension]),
+				                           List.Transform(Record.FieldNames(D[dimension]), Text.Lower)),
+				
+				    GetCodes = (dimname as text) as list =>
+				        let d = Record.Field(DimR, dimname),
+				            cat = d[category],
+				            idx = try cat[index] otherwise null,
+				            codes =
+				                if idx <> null then
+				                    if Value.Is(cat[index], type list) then List.Transform(cat[index], each Text.From(_))
+				                    else if Value.Is(cat[index], type record)
+				                         then List.Transform(Table.Sort(Record.ToTable(cat[index]), {{"Value", Order.Ascending}})[Name], each Text.From(_))
+				                         else Record.FieldNames(cat[label])
+				                else if Record.HasFields(cat,"label") then Record.FieldNames(cat[label]) else {}
+				        in  codes,
+				
+				    Codes = List.Transform(Ids, each GetCodes(_)),
+				    Sizes = List.Transform(Codes, each List.Count(_)),
+				    Mdim  = List.Count(Sizes),
+				    N     = if Mdim=0 then 0 else List.Product(Sizes),
+				
+				    // --- Dense values vector (FIXED ReplaceRange call) ---
+				    ValRaw = D[value],
+				    Values =
+				        if Value.Is(ValRaw, type list) then ValRaw
+				        else if Value.Is(ValRaw, type record) then
+				            let names = Record.FieldNames(ValRaw),
+				                vals  = Record.FieldValues(ValRaw),
+				                pos   = List.Transform(names, each Number.FromText(_)),
+				                base  = List.Repeat({null}, N),
+				                zipped= List.Zip({pos, vals}),
+				                filled= List.Accumulate(zipped, base, (st, p) => List.ReplaceRange(st, p{0}, 1, {p{1}}))
+				            in  filled
+				        else List.Repeat({null}, N),
+				
+				    // --- Build columns (last dimension varies fastest) ---
+				    Result =
+				        if N=0 then #table(Ids & {"value"}, {})
+				        else
+				            let
+				                idxs    = {0..N-1},
+				                radices = List.Transform({0..Mdim-1}, each if _=Mdim-1 then 1 else List.Product(List.Range(Sizes, _+1, Mdim-(_+1)))),
+				                DimCol  = (k as number) =>
+				                            let sizeK = Sizes{k}, radK = radices{k}, codeK = Codes{k}
+				                            in  List.Transform(idxs, (i)=> codeK{ Number.Mod(Number.IntegerDivide(i, radK), sizeK)}),
+				                Tbl     = Table.FromColumns(List.Transform({0..Mdim-1}, each DimCol(_)) & {Values}, Ids & {"value"})
+				            in  Tbl,
+				
+				    // --- Clean & keep core fields ---
+				Lower   = Table.TransformColumnNames(Result, Text.Lower),
+				Norm    = if List.Contains(Table.ColumnNames(Lower), "time_period")
+				          then Table.RenameColumns(Lower, {{"time_period","time"}}) else Lower,
+				WithUnit= if List.Contains(Table.ColumnNames(Norm), "unit")
+				          then Norm else Table.AddColumn(Norm, "unit", each unitCode, type text),
+				Keep    = Table.SelectColumns(WithUnit, {"time","geo","coicop","unit","value"}, MissingField.Ignore),
+				Typed   = Table.TransformColumnTypes(
+				            Keep,
+				            {{"time", type text},{"geo", type text},{"coicop", type text},{"unit", type text},{"value", type number}},
+				            "en-US"
+				          ),
+				
+				AddDate = Table.AddColumn(Typed, "Date", each Date.FromText([time] & "-01"), type date)
+				in
+				    AddDate
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

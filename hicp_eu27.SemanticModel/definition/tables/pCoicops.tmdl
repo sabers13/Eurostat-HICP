@@ -1,0 +1,23 @@
+table pCoicops
+	lineageTag: a89ae39c-e52f-42f7-ad24-fbefffe1da75
+
+	column pCoicops
+		dataType: string
+		lineageTag: f3d26678-d982-497d-b5d4-b7d968e3f181
+		summarizeBy: none
+		sourceColumn: pCoicops
+
+		annotation SummarizationSetBy = Automatic
+
+	partition pCoicops = m
+		mode: import
+		source =
+				let
+				    Source = {"CP00", "CP01", "CP03", "CP04", "CP05", "CP07", "CP10", "CP11"}
+				in
+				    Source
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = List
+

@@ -1,0 +1,177 @@
+{
+  "version": "1.1.0",
+  "diagrams": [
+    {
+      "ordinal": 0,
+      "scrollPosition": {
+        "x": 1858.3266250019242,
+        "y": 0
+      },
+      "nodes": [
+        {
+          "location": {
+            "x": 1201.3266250019242,
+            "y": 191.25153699010616
+          },
+          "nodeIndex": "DimDate",
+          "nodeLineageTag": "31a11be4-5286-46cb-86f8-cffb7b50e3fa",
+          "size": {
+            "height": 272,
+            "width": 234
+          },
+          "zIndex": 1
+        },
+        {
+          "location": {
+            "x": 1485.3266250019242,
+            "y": 227.25153699010616
+          },
+          "nodeIndex": "FactHICP_Index",
+          "nodeLineageTag": "345a9853-f27c-48c6-bcdc-46dd8f7ffa22",
+          "size": {
+            "height": 200,
+            "width": 234
+          },
+          "zIndex": 2
+        },
+        {
+          "location": {
+            "x": 1769.3266250019242,
+            "y": 275.25153699010616
+          },
+          "nodeIndex": "pCoicops",
+          "nodeLineageTag": "a89ae39c-e52f-42f7-ad24-fbefffe1da75",
+          "size": {
+            "height": 104,
+            "width": 234
+          },
+          "zIndex": 3
+        },
+        {
+          "location": {
+            "x": 2053.3266250019242,
+            "y": 275.25153699010616
+          },
+          "nodeIndex": "pGeos",
+          "nodeLineageTag": "cbaf4973-ba45-4bad-8605-b7918d280746",
+          "size": {
+            "height": 104,
+            "width": 234
+          },
+          "zIndex": 4
+        },
+        {
+          "location": {
+            "x": 50,
+            "y": 145.95062577592296
+          },
+          "nodeIndex": "DimCOICOP",
+          "nodeLineageTag": "650f4d70-c711-4d2c-96a7-a7f6d49bbba3",
+          "size": {
+            "height": 152,
+            "width": 234
+          },
+          "zIndex": 5
+        },
+        {
+          "location": {
+            "x": 588.955687188439,
+            "y": 200.59837993981955
+          },
+          "nodeIndex": "DimGeo",
+          "nodeLineageTag": "e016e619-276f-4025-a2b9-8e024bf45398",
+          "size": {
+            "height": 152,
+            "width": 234
+          },
+          "zIndex": 6
+        },
+        {
+          "location": {
+            "x": 683.32662500192407,
+            "y": 404.50307398021232
+          },
+          "nodeIndex": "FactHICP_Rates_MoM",
+          "nodeLineageTag": "7fb2b7d1-5bf4-45b8-84e3-cb1e7505c2db",
+          "size": {
+            "height": 200,
+            "width": 234
+          },
+          "zIndex": 7
+        },
+        {
+          "location": {
+            "x": 336.17373770417692,
+            "y": -50
+          },
+          "nodeIndex": "FactHICP_Rates_YoY",
+          "nodeLineageTag": "c5ee174b-28a8-4da7-b074-b6c84f4b844b",
+          "size": {
+            "height": 200,
+            "width": 234
+          },
+          "zIndex": 8
+        },
+        {
+          "location": {
+            "x": 160.53568149792832,
+            "y": 349.74469626762732
+          },
+          "nodeIndex": "FactHICP_Weights",
+          "nodeLineageTag": "a7a6cde5-44d0-4828-88c2-9889d2984c7b",
+          "size": {
+            "height": 248,
+            "width": 234
+          },
+          "zIndex": 9
+        },
+        {
+          "location": {
+            "x": 2287.3266250019242,
+            "y": 227.25153699010616
+          },
+          "nodeIndex": "_Measures",
+          "size": {
+            "height": 200,
+            "width": 234
+          },
+          "zIndex": 10
+        },
+        {
+          "location": {
+            "x": 2989.3266250019242,
+            "y": 215.25153699010616
+          },
+          "nodeIndex": "Index View",
+          "nodeLineageTag": "f328c3f0-b882-4863-9adb-dbfcf9639607",
+          "size": {
+            "height": 224,
+            "width": 234
+          },
+          "zIndex": 0
+        },
+        {
+          "location": {
+            "x": 3223.3266250019242,
+            "y": 251.25153699010616
+          },
+          "nodeIndex": "Metric",
+          "nodeLineageTag": "34d28e41-61f1-4027-9889-307118896b57",
+          "size": {
+            "height": 152,
+            "width": 234
+          },
+          "zIndex": 0
+        }
+      ],
+      "name": "All tables",
+      "zoomValue": 100,
+      "pinKeyFieldsToTop": false,
+      "showExtraHeaderInfo": false,
+      "hideKeyFieldsWhenCollapsed": false,
+      "tablesLocked": false
+    }
+  ],
+  "selectedDiagram": "All tables",
+  "defaultDiagram": "All tables"
+}

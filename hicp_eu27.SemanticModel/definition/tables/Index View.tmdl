@@ -1,0 +1,26 @@
+table 'Index View'
+	lineageTag: f328c3f0-b882-4863-9adb-dbfcf9639607
+
+	measure 'Index View Value' = SELECTEDVALUE('Index View'[Index View])
+		formatString: 0
+		lineageTag: 7e01eb04-5c61-4673-9120-33ed6835786c
+
+	column 'Index View'
+		formatString: 0
+		lineageTag: 41b09590-ae90-4aae-9bb1-8de38a41f072
+		summarizeBy: none
+		sourceColumn: [Value]
+
+		extendedProperty ParameterMetadata =
+				{
+				  "version": 0
+				}
+
+		annotation SummarizationSetBy = User
+
+	partition 'Index View' = calculated
+		mode: import
+		source = GENERATESERIES(0, 1, 1)
+
+	annotation PBI_Id = 095aec312f8d48c0a4e105b64b5b81ee
+

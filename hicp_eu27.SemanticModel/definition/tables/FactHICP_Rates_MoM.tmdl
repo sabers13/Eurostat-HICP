@@ -1,0 +1,139 @@
+table FactHICP_Rates_MoM
+	lineageTag: 7fb2b7d1-5bf4-45b8-84e3-cb1e7505c2db
+
+	column time
+		dataType: string
+		lineageTag: 233a2e26-bd5c-4f9a-a4c4-863c84adc390
+		summarizeBy: none
+		sourceColumn: time
+
+		annotation SummarizationSetBy = Automatic
+
+	column geo
+		dataType: string
+		lineageTag: 7982a5db-83d4-4ffe-bc0c-52ba623c0795
+		summarizeBy: none
+		sourceColumn: geo
+
+		annotation SummarizationSetBy = Automatic
+
+	column coicop
+		dataType: string
+		lineageTag: 9257ff5a-ed28-4cfb-a7be-7e98cdccc2d4
+		summarizeBy: none
+		sourceColumn: coicop
+
+		annotation SummarizationSetBy = Automatic
+
+	column unit
+		dataType: string
+		lineageTag: 187d8b10-3023-4697-9675-09ca6106dda8
+		summarizeBy: none
+		sourceColumn: unit
+
+		annotation SummarizationSetBy = Automatic
+
+	column value
+		dataType: double
+		lineageTag: b53aee65-b59e-4a9b-8387-8b98a8b16e2e
+		summarizeBy: sum
+		sourceColumn: value
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column Date
+		dataType: dateTime
+		formatString: Long Date
+		lineageTag: 0b57680b-3cef-4a26-bcfd-a050a13a82f7
+		summarizeBy: none
+		sourceColumn: Date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	partition FactHICP_Rates_MoM = m
+		mode: import
+		source =
+				let
+				  // ---------- JSON-stat loader (reusable) ----------
+				  JsonStatLoad = (dataset as text, freq as text, unit as nullable text,
+				                  coicops as list, geos as list,
+				                  startPeriod as text, endPeriod as text) as table =>
+				  let
+				      Base  = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/",
+				      Parts = List.Combine({
+				                {"lang=EN","freq=" & freq,"sinceTimePeriod=" & startPeriod,"untilTimePeriod=" & endPeriod},
+				                if unit <> null and unit <> "" then {"unit=" & unit} else {},
+				                List.Transform(coicops, each "coicop=" & _),
+				                List.Transform(geos,    each "geo="    & _)
+				             }),
+				      Url   = Base & dataset & "?" & Text.Combine(Parts,"&"),
+				
+				      Raw = Web.Contents(Url, [Timeout=#duration(0,0,90,0), Headers=[Accept="application/json"]]),
+				      J   = Json.Document(Raw),
+				      D   = if Record.HasFields(J,"dataset") then J[dataset] else J,
+				
+				      Ids  = List.Transform(D[id], each Text.Lower(Text.From(_))),
+				      DimR = Record.FromList(Record.FieldValues(D[dimension]),
+				                             List.Transform(Record.FieldNames(D[dimension]), Text.Lower)),
+				
+				      GetCodes = (dimname as text) as list =>
+				        let d = Record.Field(DimR, dimname),
+				            cat = d[category],
+				            idx = try cat[index] otherwise null
+				        in  if idx <> null then
+				              if Value.Is(cat[index], type list)   then List.Transform(cat[index], each Text.From(_))
+				              else if Value.Is(cat[index], type record)
+				                   then List.Transform(Table.Sort(Record.ToTable(cat[index]), {{"Value", Order.Ascending}})[Name], each Text.From(_))
+				                   else Record.FieldNames(cat[label])
+				            else if Record.HasFields(cat,"label") then Record.FieldNames(cat[label]) else {},
+				
+				      Codes  = List.Transform(Ids, each GetCodes(_)),
+				      Sizes  = List.Transform(Codes, each List.Count(_)),
+				      Mdim   = List.Count(Sizes),
+				      N      = if Mdim=0 then 0 else List.Product(Sizes),
+				
+				      ValRaw = D[value],
+				      Values =
+				        if Value.Is(ValRaw, type list) then ValRaw
+				        else if Value.Is(ValRaw, type record) then
+				            let names = Record.FieldNames(ValRaw),
+				                vals  = Record.FieldValues(ValRaw),
+				                pos   = List.Transform(names, each Number.FromText(_)),
+				                base  = List.Repeat({null}, N),
+				                z     = List.Zip({pos, vals})
+				            in  List.Accumulate(z, base, (st,p)=> List.ReplaceRange(st, p{0}, 1, {p{1}}))
+				        else List.Repeat({null}, N),
+				
+				      Result =
+				        if N=0 then #table(Ids & {"value"}, {})
+				        else
+				          let idxs    = {0..N-1},
+				              radices = List.Transform({0..Mdim-1}, each if _=Mdim-1 then 1 else List.Product(List.Range(Sizes, _+1, Mdim-(_+1)))),
+				              DimCol  = (k as number) =>
+				                           let sz = Sizes{k}, r = radices{k}, c = Codes{k}
+				                           in  List.Transform(idxs, (i)=> c{ Number.Mod(Number.IntegerDivide(i,r), sz)}),
+				              Tbl = Table.FromColumns(List.Transform({0..Mdim-1}, each DimCol(_)) & {Values}, Ids & {"value"})
+				          in  Tbl,
+				
+				      Lower = Table.TransformColumnNames(Result, Text.Lower),
+				      Norm  = if List.Contains(Table.ColumnNames(Lower),"time_period") then Table.RenameColumns(Lower, {{"time_period","time"}}) else Lower,
+				      Keep  = Table.SelectColumns(Norm, {"time","geo","coicop","unit","value"}, MissingField.Ignore),
+				      Typed = Table.TransformColumnTypes(Keep, {{"time", type text},{"geo", type text},{"coicop", type text},{"unit", type text},{"value", type number}}, "en-US")
+				  in  Typed,
+				
+				  // ---------- Month-over-month rate (%), CP00 ----------
+				  Raw      = JsonStatLoad("prc_hicp_mmor", "M", "RCH_M", {"CP00"}, pGeos, pStartMonth, pEndMonth),
+				  Decimal  = Table.TransformColumns(Raw, {{"value", each _ / 100.0, type number}}),   // % -> decimal
+				  AddDate  = Table.AddColumn(Decimal, "Date", each Date.FromText([time] & "-01")),
+				  Out      = Table.TransformColumnTypes(AddDate, {{"Date", type date}})
+				in
+				  Out
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

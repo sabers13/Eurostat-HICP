@@ -1,0 +1,49 @@
+table Metric
+	lineageTag: 34d28e41-61f1-4027-9889-307118896b57
+
+	column Metric
+		lineageTag: 16f910fb-fcc0-4d72-a4bc-c9f9b80a6a0f
+		summarizeBy: none
+		sourceColumn: [Value1]
+		sortByColumn: 'Metric Order'
+
+		relatedColumnDetails
+			groupByColumn: 'Metric Fields'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Metric Fields'
+		isHidden
+		lineageTag: e863064e-9c9d-4c6f-b79b-21234da78436
+		summarizeBy: none
+		sourceColumn: [Value2]
+		sortByColumn: 'Metric Order'
+
+		extendedProperty ParameterMetadata =
+				{
+				  "version": 3,
+				  "kind": 2
+				}
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Metric Order'
+		isHidden
+		formatString: 0
+		lineageTag: 4c2f6486-371c-4719-8226-b1e3b0ca4b7f
+		summarizeBy: sum
+		sourceColumn: [Value3]
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Metric = calculated
+		mode: import
+		source =
+				{
+				    ("Index", NAMEOF('_Measures'[Index]), 0),
+				    ("MoM %", NAMEOF('_Measures'[Monthly inflation rate]), 1),
+				    ("YoY %", NAMEOF('_Measures'[Annual inflation rate]), 2)
+				}
+
+	annotation PBI_Id = 562371712dd2432c8a83b7e532712399
+

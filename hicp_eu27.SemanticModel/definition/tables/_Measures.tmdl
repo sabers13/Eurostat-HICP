@@ -1,0 +1,175 @@
+table _Measures
+	lineageTag: c3dbed08-dafb-49a6-90f0-c2d4d0c2de79
+
+	measure Index =
+			
+			AVERAGE ( FactHICP_Index[value] )
+		formatString: 0.00
+		lineageTag: 4ebe102c-1a4a-4642-824d-b7f63c4fa2f9
+
+	measure 'Monthly inflation rate' =
+			
+			VAR Curr = [Index]
+			VAR Prev = CALCULATE ( [Index], DATEADD ( DimDate[Date], -1, MONTH ) )
+			RETURN DIVIDE ( Curr - Prev, Prev )
+		formatString: 0.00%;-0.00%;0.00%
+		lineageTag: 0fe32a48-b449-4423-ab90-e061916ac069
+
+	measure 'Annual inflation rate' =
+			
+			VAR Prev12 =
+			    CALCULATE (
+			        [Index],
+			        DATEADD ( DimDate[Date], -12, MONTH ),
+			        -- keep the same series (geo / COICOP) as the current context
+			        KEEPFILTERS ( VALUES ( DimGeo[geo] ) ),
+			        KEEPFILTERS ( VALUES ( DimCOICOP[coicop] ) )
+			    )
+			RETURN
+			    IF ( ISBLANK ( Prev12 ), BLANK (), DIVIDE ( [Index] - Prev12, Prev12 ) )
+		formatString: 0.00%;-0.00%;0.00%
+		lineageTag: 05700154-edf3-4f04-b7aa-eb342415faa2
+
+	measure 'Latest date' = ```
+			
+			CALCULATE (
+			    MAX ( DimDate[Date] ),
+			    FILTER ( ALL ( DimDate[Date] ), NOT ISBLANK ( [Index] ) )
+			)
+			
+			```
+		formatString: General Date
+		lineageTag: 2134e8a1-a5ff-479f-9c0e-2d28e7238ed7
+
+	measure 'Index (Latest)' =
+			
+			VAR d = [Latest Date (with data)]
+			RETURN CALCULATE ( [Index], DimDate[Date] = d )
+		formatString: 0.00
+		lineageTag: 5546f2b9-472d-43de-8aee-a52904ebf57b
+
+	measure 'Weights – Monthly Share' =
+			
+			SUM ( FactHICP_Weights[WeightShare] )
+		lineageTag: bd239c29-bd3d-4650-a2e9-2b8984b57607
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	measure 'Weights – Yearly Share' =
+			
+			AVERAGEX (
+			    VALUES ( DimDate[YearMonth] ),      -- the months visible in the current year
+			    [Weights – Monthly Share]
+			)
+		lineageTag: 20b7d14b-080b-4d72-9300-beb8e0dcc6be
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	measure 'Index Rebased 100' =
+			
+			VAR BaseDate =
+			    CALCULATE ( MIN ( DimDate[Date] ), ALLSELECTED ( DimDate ) )
+			VAR Base =
+			    CALCULATE ( [Index], DimDate[Date] = BaseDate )
+			RETURN IF ( NOT ISBLANK ( Base ), DIVIDE ( [Index], Base ) * 100 )
+		lineageTag: 3de26551-88bd-499c-a60b-f2e86f88186c
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	measure 'Title – Index by Month' = ```
+			
+			VAR D1 = FORMAT( CALCULATE( MIN(DimDate[Date]), ALLSELECTED(DimDate) ), "yyyy-MM")
+			VAR D2 = FORMAT( CALCULATE( MAX(DimDate[Date]), ALLSELECTED(DimDate) ), "yyyy-MM")
+			VAR G  = CONCATENATEX( VALUES(DimGeo[Country]), DimGeo[Country], ", " )
+			RETURN "Index by YearMonth — " & G & " (" & D1 & " to " & D2 & ")"
+			
+			```
+		lineageTag: 9152f2cc-b691-46d4-9ed5-d8784b4359c5
+
+	measure 'Annual inflation rate (Latest)' =
+			
+			VAR d = [Latest Date (with data)]
+			RETURN CALCULATE ( [Annual inflation rate], DimDate[Date] = d )
+		formatString: 0.00%;-0.00%;0.00%
+		lineageTag: e11aae7a-5aa0-4e51-a4ee-25b652ef5386
+
+	measure 'Title – Overview' =
+			
+			VAR D1 = FORMAT( CALCULATE( MIN(DimDate[Date]), ALLSELECTED(DimDate) ), "yyyy-MM")
+			VAR D2 = FORMAT( CALCULATE( MAX(DimDate[Date]), ALLSELECTED(DimDate) ), "yyyy-MM")
+			VAR G  = CONCATENATEX( VALUES(DimGeo[Country]), DimGeo[Country], ", " )
+			RETURN "HICP Overview — " & G & "  (" & D1 & " to " & D2 & ")"
+		lineageTag: d264d6e7-4847-4738-b344-404b80470fb0
+
+	measure 'Latest Date (with data)' = ```
+			
+			VAR DatesWithData =
+			    FILTER (
+			        ALLSELECTED ( DimDate[Date] ),         -- keep Geo/COICOP filters, ignore date slicer shape
+			        NOT ISBLANK ( CALCULATE ( [Index] ) )  -- evaluate the measure per date
+			    )
+			RETURN
+			    MAXX ( DatesWithData, DimDate[Date] )
+			
+			```
+		formatString: General Date
+		lineageTag: fb76525d-3a2c-45eb-b53f-de5515539d54
+
+	measure 'Monthly inflation rate (Latest)' =
+			
+			VAR d = [Latest Date (with data)]
+			RETURN CALCULATE ( [Monthly inflation rate], DimDate[Date] = d )
+		lineageTag: 45d7742f-213b-4bb7-a932-84e85a9716f0
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	measure 'Max Slicer Date' = ```
+			
+			EOMONTH( [Latest Date (with data)], -1 )   -- last day of the month *before* the latest data
+			
+			```
+		formatString: General Date
+		lineageTag: 70eb4c8b-e531-44d1-8bff-4d8fe69e9328
+
+	measure 'Keep Date (≤ cutoff)' = ```
+			
+			VAR d = MAX( DimDate[Date] )
+			RETURN IF( d <= [Max Slicer Date], 1, 0 )
+			
+			```
+		formatString: 0
+		lineageTag: 2b73d5a2-2073-42b3-8776-8be7b817e5f1
+
+	measure 'YoY % (No First Month)' = ```
+			
+			VAR ThisYM  = MAX ( DimDate[YearMonthNum] )
+			VAR FirstYM =
+			    CALCULATE (
+			        MIN ( DimDate[YearMonthNum] ),
+			        REMOVEFILTERS ( DimDate )      -- remove only the time filter, keep geo/coicop, etc.
+			    )
+			RETURN
+			    IF ( ThisYM = FirstYM, BLANK (), [Annual inflation rate] )
+			
+			```
+		formatString: 0.00%;-0.00%;0.00%
+		lineageTag: f333db15-1a87-45be-94f5-af4c9635d027
+
+	column Keep
+		formatString: 0
+		lineageTag: 81077f64-566c-451a-8547-3eb2b0a7a00b
+		summarizeBy: sum
+		isNameInferred
+		sourceColumn: [Keep]
+
+		annotation SummarizationSetBy = Automatic
+
+	partition _Measures = calculated
+		mode: import
+		source = ```
+				DATATABLE ( "Keep", INTEGER, { { 1 } } )
+				
+				```
+
+	annotation PBI_Id = 47be83b57d9348e2b0545cda20b036ae
+

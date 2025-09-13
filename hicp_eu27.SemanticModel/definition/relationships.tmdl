@@ -1,0 +1,58 @@
+relationship 5ed74a55-39de-472a-b681-8ba42163e85b
+	joinOnDateBehavior: datePartOnly
+	fromColumn: DimDate.Date
+	toColumn: LocalDateTable_ed3cf7b7-ed95-4266-b9fe-086a5ca9baf6.Date
+
+relationship AutoDetected_828e7a51-acaf-4ced-9f06-792910ae4eee
+	fromColumn: FactHICP_Index.geo
+	toColumn: DimGeo.geo
+
+relationship AutoDetected_2ff71c5d-5eaf-4a8c-a37e-e790df4a3a02
+	fromColumn: FactHICP_Rates_YoY.geo
+	toColumn: DimGeo.geo
+
+relationship AutoDetected_3ee50029-05c5-419a-8bb9-96fdc2825c42
+	fromColumn: FactHICP_Rates_MoM.geo
+	toColumn: DimGeo.geo
+
+relationship AutoDetected_3b7687f5-42ac-41f2-90e9-5da52031a720
+	fromColumn: FactHICP_Weights.geo
+	toColumn: DimGeo.geo
+
+relationship AutoDetected_363a2bd3-6007-4111-8548-a910e89ce831
+	fromColumn: FactHICP_Index.coicop
+	toColumn: DimCOICOP.coicop
+
+relationship AutoDetected_5d75691b-a7bc-4998-bf79-f6d8d3fba1a2
+	fromColumn: FactHICP_Rates_YoY.coicop
+	toColumn: DimCOICOP.coicop
+
+relationship AutoDetected_a9ed1f23-ae00-47fb-b1a2-7dadfa93f6e8
+	fromColumn: FactHICP_Rates_MoM.coicop
+	toColumn: DimCOICOP.coicop
+
+relationship AutoDetected_3c771877-1bb2-4ab9-a7e0-8d67f819ddc3
+	fromColumn: FactHICP_Weights.coicop
+	toColumn: DimCOICOP.coicop
+
+relationship a4ebe546-7e35-4c90-b8f3-6fa0caa3059a
+	joinOnDateBehavior: datePartOnly
+	fromColumn: DimDate.MonthEnd
+	toColumn: LocalDateTable_ba85ecad-ff2b-44a7-8253-d7de1f235430.Date
+
+relationship 9e424f96-13ad-5f6c-259c-41238da86eb1
+	fromColumn: FactHICP_Index.Date
+	toColumn: DimDate.Date
+
+relationship 2c546056-ac51-da03-a669-5d397379039c
+	fromColumn: FactHICP_Rates_MoM.Date
+	toColumn: DimDate.Date
+
+relationship 294f7a95-83af-7a27-6cbe-5a05cac40f48
+	fromColumn: FactHICP_Rates_YoY.Date
+	toColumn: DimDate.Date
+
+relationship db4f9f53-9d9f-2680-9345-65b2a661a1a1
+	fromColumn: FactHICP_Weights.Date
+	toColumn: DimDate.Date
+

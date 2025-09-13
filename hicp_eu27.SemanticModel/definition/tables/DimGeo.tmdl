@@ -1,0 +1,70 @@
+table DimGeo
+	lineageTag: e016e619-276f-4025-a2b9-8e024bf45398
+
+	column geo
+		dataType: string
+		lineageTag: 81119b9d-3ab4-4afa-a8d2-b3fec810a938
+		summarizeBy: none
+		sourceColumn: geo
+
+		annotation SummarizationSetBy = Automatic
+
+	column GeoOrder
+		dataType: int64
+		formatString: 0
+		lineageTag: bda0ea0f-f7fd-4af8-a5cd-aee28d8f4e82
+		summarizeBy: sum
+		sourceColumn: GeoOrder
+
+		annotation SummarizationSetBy = Automatic
+
+	column Country
+		dataType: string
+		lineageTag: 68595b62-b335-40ac-9679-36fd6e7abcf4
+		summarizeBy: none
+		sourceColumn: Country
+
+		annotation SummarizationSetBy = Automatic
+
+	partition DimGeo = m
+		mode: import
+		source =
+				let
+				    // Distinct geos from facts
+				    FromIndex = try Table.SelectColumns(FactHICP_Index, {"geo"}) otherwise #table({"geo"},{}),
+				    FromWts   = try Table.SelectColumns(FactHICP_Weights, {"geo"}) otherwise #table({"geo"},{}),
+				    AllGeos0  = Table.Distinct(Table.Combine({FromIndex, FromWts})),
+				    AllGeos   = Table.TransformColumnTypes(AllGeos0, {{"geo", type text}}),
+				
+				    // Map the FACT keys to the label you want to SHOW
+				    Map = #table(type table [geo = text, GeoName = text], {
+				        {"EU27_2020","EU"},            // <-- key from facts -> label you want
+				        {"DE","Germany"}, {"FR","France"}, {"IT","Italy"},
+				        {"ES","Spain"}, {"NL","Netherlands"}, {"PL","Poland"}
+				    }),
+				
+				    // Join names
+				    WithNames   = Table.NestedJoin(AllGeos, {"geo"}, Map, {"geo"}, "Map", JoinKind.LeftOuter),
+				    ExpandNames = Table.ExpandTableColumn(WithNames, "Map", {"GeoName"}, {"GeoName"}),
+				
+				    // Sort order
+				    SortMap = #table(type table [geo = text, GeoOrder = Int64.Type], {
+				        {"EU27_2020",0},{"DE",1},{"FR",2},{"IT",3},{"ES",4},{"NL",5},{"PL",6}
+				    }),
+				    JoinSort   = Table.NestedJoin(ExpandNames, {"geo"}, SortMap, {"geo"}, "Sort", JoinKind.LeftOuter),
+				    ExpandSort = Table.ExpandTableColumn(JoinSort, "Sort", {"GeoOrder"}, {"GeoOrder"}),
+				
+				    // Final labels & types
+				    AddLabel   = Table.AddColumn(ExpandSort, "Country", each if [GeoName] <> null then [GeoName] else [geo], type text),
+				    FillOrder  = Table.ReplaceValue(AddLabel, null, 999, Replacer.ReplaceValue, {"GeoOrder"}),
+				    Out        = Table.TransformColumnTypes(
+				                    Table.SelectColumns(FillOrder, {"geo","Country","GeoOrder"}),
+				                    {{"geo", type text}, {"Country", type text}, {"GeoOrder", Int64.Type}}
+				                 )
+				in
+				    Out
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

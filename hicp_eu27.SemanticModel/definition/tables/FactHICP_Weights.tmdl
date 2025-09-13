@@ -1,0 +1,212 @@
+table FactHICP_Weights
+	lineageTag: a7a6cde5-44d0-4828-88c2-9889d2984c7b
+
+	column time
+		dataType: string
+		lineageTag: 0a1d4099-b538-4de4-a259-1d16e83415fe
+		summarizeBy: none
+		sourceColumn: time
+
+		annotation SummarizationSetBy = Automatic
+
+	column geo
+		dataType: string
+		lineageTag: 1725d697-e613-45be-bf6b-7b00718c8e88
+		summarizeBy: none
+		sourceColumn: geo
+
+		annotation SummarizationSetBy = Automatic
+
+	column coicop
+		dataType: string
+		lineageTag: b3f3a139-fa09-4c51-9a0c-dae071f46499
+		summarizeBy: none
+		sourceColumn: coicop
+
+		annotation SummarizationSetBy = Automatic
+
+	column weight
+		dataType: double
+		lineageTag: 5916bde0-5fa0-429a-9485-1f6dc8ff1e3b
+		summarizeBy: sum
+		sourceColumn: weight
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column Year
+		dataType: int64
+		formatString: 0
+		lineageTag: 99536ab7-bc6a-4f07-bbf1-ef78b84a7b41
+		summarizeBy: sum
+		sourceColumn: Year
+
+		annotation SummarizationSetBy = Automatic
+
+	column TotalDivWeight
+		dataType: double
+		lineageTag: 1c38c8fd-d566-49de-9165-8b1d91ad0542
+		summarizeBy: sum
+		sourceColumn: TotalDivWeight
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column WeightShare
+		dataType: double
+		lineageTag: 3547ae07-1085-4a10-91bc-7f23897a4026
+		summarizeBy: sum
+		sourceColumn: WeightShare
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column Date
+		dataType: dateTime
+		formatString: Long Date
+		lineageTag: c999086e-1cb0-4f96-85c3-cbca78e20540
+		summarizeBy: none
+		sourceColumn: Date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	partition FactHICP_Weights = m
+		mode: import
+		source =
+				let
+				  // ---------- JSON-stat loader (reusable) ----------
+				  JsonStatLoad = (dataset as text, freq as text, unit as nullable text,
+				                  coicops as list, geos as list,
+				                  startPeriod as text, endPeriod as text) as table =>
+				  let
+				      Base  = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/",
+				      Parts = List.Combine({
+				                {"lang=EN","freq=" & freq,"sinceTimePeriod=" & startPeriod,"untilTimePeriod=" & endPeriod},
+				                if unit <> null and unit <> "" then {"unit=" & unit} else {},
+				                List.Transform(coicops, each "coicop=" & _),
+				                List.Transform(geos,    each "geo="    & _)
+				             }),
+				      Url   = Base & dataset & "?" & Text.Combine(Parts,"&"),
+				
+				      Raw = Web.Contents(Url, [Timeout=#duration(0,0,90,0), Headers=[Accept="application/json"]]),
+				      J   = Json.Document(Raw),
+				      D   = if Record.HasFields(J,"dataset") then J[dataset] else J,
+				
+				      Ids  = List.Transform(D[id], each Text.Lower(Text.From(_))),
+				      DimR = Record.FromList(Record.FieldValues(D[dimension]),
+				                             List.Transform(Record.FieldNames(D[dimension]), Text.Lower)),
+				
+				      GetCodes = (dimname as text) as list =>
+				        let d = Record.Field(DimR, dimname),
+				            cat = d[category],
+				            idx = try cat[index] otherwise null
+				        in  if idx <> null then
+				              if Value.Is(cat[index], type list)   then List.Transform(cat[index], each Text.From(_))
+				              else if Value.Is(cat[index], type record)
+				                   then List.Transform(Table.Sort(Record.ToTable(cat[index]), {{"Value", Order.Ascending}})[Name], each Text.From(_))
+				                   else Record.FieldNames(cat[label])
+				            else if Record.HasFields(cat,"label") then Record.FieldNames(cat[label]) else {},
+				
+				      Codes  = List.Transform(Ids, each GetCodes(_)),
+				      Sizes  = List.Transform(Codes, each List.Count(_)),
+				      Mdim   = List.Count(Sizes),
+				      N      = if Mdim=0 then 0 else List.Product(Sizes),
+				
+				      ValRaw = D[value],
+				      Values =
+				        if Value.Is(ValRaw, type list) then ValRaw
+				        else if Value.Is(ValRaw, type record) then
+				            let names = Record.FieldNames(ValRaw),
+				                vals  = Record.FieldValues(ValRaw),
+				                pos   = List.Transform(names, each Number.FromText(_)),
+				                base  = List.Repeat({null}, N),
+				                z     = List.Zip({pos, vals})
+				            in  List.Accumulate(z, base, (st,p)=> List.ReplaceRange(st, p{0}, 1, {p{1}}))
+				        else List.Repeat({null}, N),
+				
+				      Result =
+				        if N=0 then #table(Ids & {"value"}, {})
+				        else
+				          let idxs    = {0..N-1},
+				              radices = List.Transform({0..Mdim-1}, each if _=Mdim-1 then 1 else List.Product(List.Range(Sizes, _+1, Mdim-(_+1)))),
+				              DimCol  = (k as number) =>
+				                           let sz = Sizes{k}, r = radices{k}, c = Codes{k}
+				                           in  List.Transform(idxs, (i)=> c{ Number.Mod(Number.IntegerDivide(i,r), sz)}),
+				              Tbl = Table.FromColumns(List.Transform({0..Mdim-1}, each DimCol(_)) & {Values}, Ids & {"value"})
+				          in  Tbl,
+				
+				      Lower = Table.TransformColumnNames(Result, Text.Lower),
+				      Norm  = if List.Contains(Table.ColumnNames(Lower),"time_period") then Table.RenameColumns(Lower, {{"time_period","time"}}) else Lower,
+				      // keep 'unit' only if it exists
+				      Keep  = Table.SelectColumns(Norm, {"time","geo","coicop","unit","value"}, MissingField.Ignore),
+				      Typed = Table.TransformColumnTypes(Keep, {{"time", type text},{"geo", type text},{"coicop", type text},{"value", type number}}, "en-US")
+				  in  Typed,
+				
+				  // ---------- Try monthly weights; if none, fall back to annual ----------
+				  W_month = try JsonStatLoad("prc_hicp_inw", "M", null, pCoicops, pGeos, pStartMonth, pEndMonth)
+				            otherwise #table({"time","geo","coicop","value"}, {}),
+				  HasM    = try Table.RowCount(W_month) > 0 otherwise false,
+				
+				  W_raw =
+				    if HasM then
+				        W_month
+				    else
+				        let
+				          YearStart = Text.Start(pStartMonth, 4),
+				          YearEnd   = Text.Start(pEndMonth,   4),
+				          W_annual  = JsonStatLoad("prc_hicp_inw", "A", null, pCoicops, pGeos, YearStart, YearEnd),
+				
+				          StartDate = Date.From(pStartMonth & "-01"),
+				          EndDate   = Date.From(pEndMonth   & "-01"),
+				          MonthList = List.Generate(()=> StartDate, each _ <= EndDate, each Date.AddMonths(_,1)),
+				          MonthsTbl = Table.FromList(List.Transform(MonthList, each Date.ToText(_, "yyyy-MM")), Splitter.SplitByNothing(), {"time"}),
+				          MonthsYr  = Table.AddColumn(MonthsTbl, "Year", each Text.Start([time],4), type text),
+				
+				          WaYear    = Table.RenameColumns(W_annual, {{"time","Year"}}),
+				          Join      = Table.NestedJoin(WaYear, {"Year"}, MonthsYr, {"Year"}, "M", JoinKind.Inner),
+				          Expand    = Table.ExpandTableColumn(Join, "M", {"time"}, {"time"}),
+				          KeepCols  = Table.SelectColumns(Expand, {"time","geo","coicop","value"})
+				        in
+				          KeepCols,
+				
+				  // ---------- Compute Weight & WeightShare ----------
+				  Renamed    = Table.RenameColumns(W_raw, {{"value","weight"}}),
+				  AddYear    = Table.AddColumn(Renamed, "Year", each Text.Start([time],4), type text),
+				
+				  YearCoicop = Table.Group(AddYear, {"geo","Year","coicop"},
+				                   {{"YearWeight", each List.Average([weight]), type number}}),
+				
+				  DivOnly    = Table.SelectRows(YearCoicop, each [coicop] <> "CP00"),
+				  Totals     = Table.Group(DivOnly, {"geo","Year"},
+				                   {{"TotalDivWeight", each List.Sum([YearWeight]), type number}}),
+				
+				  JoinT      = Table.NestedJoin(AddYear, {"geo","Year"}, Totals, {"geo","Year"}, "T", JoinKind.LeftOuter),
+				  ExpandT    = Table.ExpandTableColumn(JoinT, "T", {"TotalDivWeight"}, {"TotalDivWeight"}),
+				
+				  WithShare  = Table.AddColumn(ExpandT, "WeightShare",
+				                 each if [coicop] <> "CP00" and [TotalDivWeight] <> null and [TotalDivWeight] <> 0
+				                      then [weight] / [TotalDivWeight] else null, type number),
+				
+				  AddDate    = Table.AddColumn(WithShare, "Date", each Date.FromText([time] & "-01")),
+				
+				  // ---- Safe typing: only type columns that actually exist ----
+				  TypePairs  = {
+				                {"Date", type date},
+				                {"Year", Int64.Type},
+				                {"weight", type number},
+				                {"WeightShare", type number}
+				               },
+				  Existing   = List.Select(TypePairs, each List.Contains(Table.ColumnNames(AddDate), _{0})),
+				  Out        = Table.TransformColumnTypes(AddDate, Existing)
+				in
+				  Out
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

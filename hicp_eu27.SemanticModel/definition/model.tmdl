@@ -1,0 +1,34 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-US
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation PBI_QueryOrder = ["pStartMonth","pEndMonth","pGeos","pCoicops","DimDate","fnListChunks","fnStats6","FactHICP_Index","FactHICP_Rates_YoY","FactHICP_Rates_MoM","FactHICP_Weights","DimGeo","DimCOICOP"]
+
+annotation __PBI_TimeIntelligenceEnabled = 1
+
+annotation PBIDesktopVersion = 2.146.1454.0 (25.08)+901d6c338d1dea81ac3e53073ffb10469f0f37b8
+
+annotation PBI_ProTooling = ["DevMode"]
+
+ref table pGeos
+ref table pCoicops
+ref table DimDate
+ref table DateTableTemplate_64bb299b-4685-4b3f-9f54-baa857d1eb41
+ref table LocalDateTable_ed3cf7b7-ed95-4266-b9fe-086a5ca9baf6
+ref table FactHICP_Index
+ref table FactHICP_Rates_YoY
+ref table FactHICP_Rates_MoM
+ref table FactHICP_Weights
+ref table DimGeo
+ref table DimCOICOP
+ref table LocalDateTable_ba85ecad-ff2b-44a7-8253-d7de1f235430
+ref table _Measures
+ref table 'Index View'
+ref table Metric
+
+ref cultureInfo en-US
+

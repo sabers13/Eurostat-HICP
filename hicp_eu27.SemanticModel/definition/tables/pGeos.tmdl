@@ -1,0 +1,23 @@
+table pGeos
+	lineageTag: cbaf4973-ba45-4bad-8605-b7918d280746
+
+	column pGeos
+		dataType: string
+		lineageTag: d36b71e7-ab20-413e-9d41-2468913799d9
+		summarizeBy: none
+		sourceColumn: pGeos
+
+		annotation SummarizationSetBy = Automatic
+
+	partition pGeos = m
+		mode: import
+		source =
+				let
+				    Source = {"EU27_2020", "DE", "FR", "IT", "ES", "NL", "PL"}
+				in
+				    Source
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = List
+

@@ -1,0 +1,72 @@
+table DimCOICOP
+	lineageTag: 650f4d70-c711-4d2c-96a7-a7f6d49bbba3
+
+	column coicop
+		dataType: string
+		lineageTag: 9d4f2b5c-4668-4adf-a0c0-ceaec9e6456f
+		summarizeBy: none
+		sourceColumn: coicop
+
+		annotation SummarizationSetBy = Automatic
+
+	column Category
+		dataType: string
+		lineageTag: 6d945d99-8a3b-4ffe-a1b2-61c437b5fb76
+		summarizeBy: none
+		sourceColumn: Category
+
+		annotation SummarizationSetBy = Automatic
+
+	column CoicopOrder
+		dataType: int64
+		formatString: 0
+		lineageTag: 88c27a02-65d4-49a7-8eb9-b0ed40db74ee
+		summarizeBy: sum
+		sourceColumn: CoicopOrder
+
+		annotation SummarizationSetBy = Automatic
+
+	partition DimCOICOP = m
+		mode: import
+		source =
+				let
+				    // 1) Distinct COICOPs from facts/weights (typed)
+				    FromIndex = try Table.SelectColumns(FactHICP_Index, {"coicop"}) otherwise #table({"coicop"},{}),
+				    FromWts   = try Table.SelectColumns(FactHICP_Weights, {"coicop"}) otherwise #table({"coicop"},{}),
+				    AllCats0  = Table.Distinct(Table.Combine({FromIndex, FromWts})),
+				    AllCats   = Table.TransformColumnTypes(AllCats0, {{"coicop", type text}}),
+				
+				    // 2) Keep only the scope we want
+				    KeepList = {"CP00","CP01","CP03","CP04","CP05","CP07","CP10","CP11"},
+				    Filtered = Table.SelectRows(AllCats, each List.Contains(KeepList, [coicop])),
+				
+				    // 3) Map labels + sort order
+				    Map = #table(type table [coicop = text, CoicopLabel = text, CoicopOrder = Int64.Type], {
+				        {"CP00","All-items HICP",0},
+				        {"CP01","Food & non-alcoholic beverages",1},
+				        {"CP03","Clothing & footwear",2},
+				        {"CP04","Housing, water, electricity, gas & other fuels",3},
+				        {"CP05","Furnishings & household equipment",4},
+				        {"CP07","Transport",5},
+				        {"CP10","Education",6},
+				        {"CP11","Restaurants & hotels",7}
+				    }),
+				
+				    // 4) Safe join (no duplicate column names)
+				    Join       = Table.NestedJoin(Filtered, {"coicop"}, Map, {"coicop"}, "Map", JoinKind.LeftOuter),
+				    Expanded   = Table.ExpandTableColumn(Join, "Map", {"CoicopLabel","CoicopOrder"}, {"CoicopLabel","CoicopOrder"}),
+				    Filled     = Table.ReplaceValue(Expanded, null, 999, Replacer.ReplaceValue, {"CoicopOrder"}),
+				
+				    // 5) Final shape & types
+				    Out = Table.TransformColumnTypes(
+				            Table.SelectColumns(Filled, {"coicop","CoicopLabel","CoicopOrder"}),
+				            {{"coicop", type text}, {"CoicopLabel", type text}, {"CoicopOrder", Int64.Type}}
+				          ),
+				    #"Renamed Columns" = Table.RenameColumns(Out,{{"CoicopLabel", "Category"}})
+				in
+				    #"Renamed Columns"
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+
