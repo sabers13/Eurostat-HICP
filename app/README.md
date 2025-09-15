@@ -3,8 +3,6 @@
 Interactive dashboard to explore **HICP** (Harmonised Index of Consumer Prices) across EU countries and COICOP categories.  
 The app reads a monthly index CSV (2015=100), computes **Monthly** and **Annual** inflation rates, and renders responsive, scrollable visualizations with **flag-inspired country colors** and optional **country flags**.
 
-`app/sample.png`
-
 ---
 
 ## ✨ Features
